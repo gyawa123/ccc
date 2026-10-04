@@ -1,0 +1,1004 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#f7f7f7">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="format-detection" content="telephone=no,email=no,address=no">
+<title>聊天</title>
+<style>
+  * {
+    box-sizing: border-box;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+  }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    overscroll-behavior: none;
+    background: #ededed;
+  }
+
+  body {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB",
+                 "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
+    font-size: 15px;
+    color: #191919;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .hidden { display: none !important; }
+
+  #app {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100vh;
+    height: 100dvh;
+    overflow: hidden;
+  }
+
+  .page {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* ============ 匹配页 ============ */
+  #matchPage {
+    background: #fafafa;
+  }
+
+  .m-main {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 0 32px;
+    text-align: center;
+    min-height: 0;
+  }
+
+  .m-title {
+    font-size: 22px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    color: #191919;
+  }
+
+  .m-desc {
+    margin-top: 12px;
+    font-size: 14px;
+    line-height: 1.7;
+    color: #9a9a9a;
+  }
+
+  .m-bottom {
+    flex: 0 0 auto;
+    min-height: 86px;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    padding: 0 24px calc(28px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .m-btn {
+    display: block;
+    width: 100%;
+    height: 48px;
+    border: none;
+    border-radius: 8px;
+    background: #07c160;
+    color: #fff;
+    font-size: 16px;
+    font-family: inherit;
+    letter-spacing: 1px;
+    transition: opacity .15s;
+    touch-action: manipulation;
+  }
+
+  .m-btn:active { opacity: .82; }
+
+  .matching {
+    min-height: 48px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    padding: 2px 0;
+  }
+
+  .matching-main {
+    font-size: 16px;
+    color: #7a7a7a;
+    letter-spacing: 2px;
+    animation: breathe 1.6s ease-in-out infinite;
+  }
+
+  .matching-sub {
+    font-size: 12px;
+    color: #b3b3b3;
+    letter-spacing: .5px;
+  }
+
+  @keyframes breathe {
+    0%, 100% { opacity: .42; }
+    50% { opacity: 1; }
+  }
+
+  /* ============ 聊天页 ============ */
+  #chatPage {
+    background: #ededed;
+  }
+
+  .chat-header {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: calc(50px + env(safe-area-inset-top, 0px));
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-left: 10px;
+    padding-right: 10px;
+    background: #f7f7f7;
+    border-bottom: 1px solid #e3e3e3;
+    position: relative;
+    z-index: 5;
+  }
+
+  .header-title {
+    font-size: 16px;
+    font-weight: 500;
+    color: #191919;
+  }
+
+  .msg-list {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    padding: 14px 12px 8px;
+  }
+
+  .row {
+    display: flex;
+    align-items: center;
+    margin-bottom: 12px;
+  }
+
+  .row.peer { justify-content: flex-start; }
+  .row.me   { justify-content: flex-end; }
+
+  .bubble {
+    max-width: 68%;
+    padding: 9px 12px;
+    border-radius: 6px;
+    font-size: 15px;
+    line-height: 1.45;
+    word-break: break-word;
+    white-space: pre-wrap;
+  }
+
+  .row.peer .bubble {
+    background: #ffffff;
+    color: #191919;
+  }
+
+  .row.me .bubble {
+    background: #95ec69;
+    color: #191919;
+  }
+
+  .report-btn {
+    flex: 0 0 auto;
+    margin-left: 9px;
+    padding: 4px 1px;
+    border: none;
+    background: none;
+    font-family: inherit;
+    font-size: 12px;
+    color: #a0a0a0;
+    letter-spacing: .5px;
+    touch-action: manipulation;
+  }
+
+  .report-btn:active { color: #07c160; }
+
+  /* ============ 输入栏 ============ */
+  .composer {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px calc(8px + env(safe-area-inset-bottom, 0px));
+    background: #f7f7f7;
+    border-top: 1px solid #e3e3e3;
+  }
+
+  .composer input {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 38px;
+    padding: 0 12px;
+    border: none;
+    border-radius: 6px;
+    background: #ffffff;
+    font-size: 15px;
+    font-family: inherit;
+    color: #191919;
+    outline: none;
+  }
+
+  .composer input::placeholder { color: #b5b5b5; }
+
+  .composer input:disabled {
+    background: #ebebeb;
+    color: #9c9c9c;
+  }
+
+  .composer button {
+    flex: 0 0 auto;
+    height: 38px;
+    padding: 0 16px;
+    border: none;
+    border-radius: 6px;
+    background: #07c160;
+    color: #fff;
+    font-size: 15px;
+    font-family: inherit;
+    transition: opacity .15s;
+    touch-action: manipulation;
+  }
+
+  .composer button:active { opacity: .82; }
+
+  .composer button:disabled {
+    background: #c6c6c6;
+    opacity: 1;
+  }
+
+  /* ============ 举报面板 ============ */
+  .sheet {
+    position: fixed;
+    inset: 0;
+    z-index: 2000;
+  }
+
+  .sheet-mask {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, .4);
+  }
+
+  .sheet-body {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    max-height: 88%;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    background: #fff;
+    border-radius: 14px 14px 0 0;
+    padding: 6px 0 calc(6px + env(safe-area-inset-bottom, 0px));
+    animation: slideUp .22s cubic-bezier(.22,.61,.36,1);
+  }
+
+  @keyframes slideUp {
+    from { transform: translateY(100%); }
+    to   { transform: translateY(0); }
+  }
+
+  .sheet-title {
+    padding: 14px 0 12px;
+    text-align: center;
+    font-size: 13px;
+    color: #9a9a9a;
+    letter-spacing: .5px;
+  }
+
+  .sheet-item {
+    display: block;
+    width: 100%;
+    padding: 15px 20px;
+    border: none;
+    border-top: 1px solid #f2f2f2;
+    background: #fff;
+    font-size: 16px;
+    font-family: inherit;
+    color: #191919;
+    text-align: center;
+    touch-action: manipulation;
+  }
+
+  .sheet-item.active {
+    color: #07c160;
+    font-weight: 500;
+  }
+
+  #otherText {
+    display: block;
+    width: calc(100% - 32px);
+    height: 84px;
+    margin: 14px auto 0;
+    padding: 10px 12px;
+    border: 1px solid #e4e4e4;
+    border-radius: 8px;
+    font-size: 15px;
+    font-family: inherit;
+    line-height: 1.5;
+    color: #191919;
+    resize: none;
+    outline: none;
+    background: #fafafa;
+  }
+
+  #otherText::placeholder { color: #b5b5b5; }
+
+  .sheet-submit,
+  .sheet-cancel {
+    display: block;
+    width: calc(100% - 32px);
+    height: 46px;
+    margin: 14px auto 0;
+    border: none;
+    border-radius: 8px;
+    font-size: 16px;
+    font-family: inherit;
+    touch-action: manipulation;
+  }
+
+  .sheet-submit {
+    background: #07c160;
+    color: #fff;
+  }
+
+  .sheet-submit:active { opacity: .82; }
+
+  .sheet-cancel {
+    margin-top: 8px;
+    margin-bottom: 8px;
+    background: #f2f2f2;
+    color: #444;
+  }
+
+  /* ============ Toast ============ */
+  .toast {
+    position: fixed;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 3000;
+    padding: 12px 24px;
+    border-radius: 8px;
+    background: rgba(0, 0, 0, .78);
+    color: #fff;
+    font-size: 14px;
+    letter-spacing: .5px;
+    pointer-events: none;
+    animation: fadeIn .16s ease;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+
+  /* ============ 封禁弹窗 ============ */
+  #banModal {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 28px;
+    background: rgba(0, 0, 0, .62);
+  }
+
+  .ban-card {
+    width: 100%;
+    max-width: 320px;
+    padding: 30px 24px 26px;
+    border-radius: 14px;
+    background: #fff;
+    text-align: center;
+    animation: pop .26s cubic-bezier(.22,.61,.36,1);
+  }
+
+  @keyframes pop {
+    from { transform: scale(.9); opacity: 0; }
+    to   { transform: scale(1);  opacity: 1; }
+  }
+
+  .ban-title {
+    margin-bottom: 22px;
+    font-size: 19px;
+    font-weight: 600;
+    color: #e64340;
+    letter-spacing: .5px;
+    -webkit-user-select: none;
+    user-select: none;
+    cursor: default;
+  }
+
+  .ban-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 0;
+    border-bottom: 1px solid #f1f1f1;
+    font-size: 14px;
+    text-align: left;
+  }
+
+  .ban-row:last-of-type { border-bottom: none; }
+
+  .ban-row span:first-child { color: #9a9a9a; }
+
+  .ban-row span:last-child {
+    color: #191919;
+    font-weight: 500;
+  }
+
+  .ban-note {
+    margin-top: 18px;
+    font-size: 12px;
+    line-height: 1.7;
+    color: #adadad;
+  }
+</style>
+</head>
+<body>
+
+<div id="app">
+
+  <!-- ================= 匹配页 ================= -->
+  <div id="matchPage" class="page">
+    <div class="m-main">
+      <div class="m-title">随机聊天</div>
+      <div class="m-desc">点击下方按钮<br>与随机一位网友开始聊天</div>
+    </div>
+    <div class="m-bottom">
+      <button id="matchBtn" class="m-btn" type="button">开始匹配</button>
+      <div id="matching" class="matching hidden">
+        <div class="matching-main">正在匹配中</div>
+        <div id="matchElapsed" class="matching-sub">已等待 0 秒</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= 聊天页 ================= -->
+  <div id="chatPage" class="page hidden">
+    <div class="chat-header">
+      <span id="peerName" class="header-title">陌生人</span>
+    </div>
+    <div id="msgList" class="msg-list"></div>
+    <div class="composer">
+      <input id="inputBox" type="text" placeholder="说点什么…" autocomplete="off" autocorrect="off" spellcheck="false">
+      <button id="sendBtn" type="button">发送</button>
+    </div>
+  </div>
+
+</div>
+
+<!-- ================= 举报面板 ================= -->
+<div id="reportSheet" class="sheet hidden">
+  <div class="sheet-mask"></div>
+  <div class="sheet-body">
+    <div class="sheet-title">举报该条消息</div>
+    <button class="sheet-item" type="button" data-type="恶语">恶语</button>
+    <button class="sheet-item" type="button" data-type="黄色">黄色</button>
+    <button class="sheet-item" type="button" data-type="其他">其他</button>
+    <div id="otherWrap" class="hidden">
+      <textarea id="otherText" placeholder="请填写具体内容"></textarea>
+    </div>
+    <button id="reportSubmit" class="sheet-submit" type="button">提交</button>
+    <button id="reportCancel" class="sheet-cancel" type="button">取消</button>
+  </div>
+</div>
+
+<!-- ================= Toast ================= -->
+<div id="toast" class="toast hidden"></div>
+
+<!-- ================= 封禁弹窗 ================= -->
+<div id="banModal" class="hidden">
+  <div class="ban-card">
+    <div id="banTitle" class="ban-title">账号已被封禁</div>
+    <div class="ban-row"><span>封禁时长</span><span id="banDuration">10 年</span></div>
+    <div class="ban-row"><span>封禁原因</span><span>恶意辱骂</span></div>
+    <div class="ban-row"><span>处理时间</span><span id="banTime">—</span></div>
+    <div class="ban-note">该账号在聊天过程中存在恶意辱骂他人的行为，违反社区规范，已作永久封禁处理。</div>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ============ 全屏高度设置 ============ */
+  var app = document.getElementById('app');
+
+  function setFullHeight() {
+    var h = window.innerHeight;
+    if (window.visualViewport && window.visualViewport.height > 100) {
+      h = window.visualViewport.height;
+    }
+    if (app) {
+      app.style.height = h + 'px';
+    }
+  }
+
+  setFullHeight();
+
+  var resizeTimer;
+  function onResize() {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(setFullHeight, 50);
+  }
+
+  window.addEventListener('resize', onResize);
+  window.addEventListener('orientationchange', function () {
+    setTimeout(setFullHeight, 100);
+    setTimeout(setFullHeight, 300);
+    setTimeout(setFullHeight, 600);
+  });
+
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', setFullHeight);
+    window.visualViewport.addEventListener('scroll', setFullHeight);
+  }
+
+  setTimeout(setFullHeight, 60);
+  setTimeout(setFullHeight, 300);
+
+  /* ============ 工具 ============ */
+  var $ = function (id) { return document.getElementById(id); };
+
+  var matchPage   = $('matchPage');
+  var chatPage    = $('chatPage');
+  var matchBtn    = $('matchBtn');
+  var matching    = $('matching');
+  var matchElapsed= $('matchElapsed');
+  var msgList     = $('msgList');
+  var inputBox    = $('inputBox');
+  var sendBtn     = $('sendBtn');
+  var peerNameEl  = $('peerName');
+  var reportSheet = $('reportSheet');
+  var otherWrap   = $('otherWrap');
+  var otherText   = $('otherText');
+  var banModal    = $('banModal');
+  var banTitle    = $('banTitle');
+  var banDuration = $('banDuration');
+  var toastEl     = $('toast');
+
+  /* ============ 可调参数 ============ */
+  var MATCH_MIN = 10000;
+  var MATCH_MAX = 15000;
+  var BOT_MIN   = 5000;
+  var BOT_MAX   = 8000;
+  var BAN_DELAY = 10000;
+
+  /* ============ 状态 ============ */
+  var bannedNow   = false;
+  var mutedNow    = false;
+  var matchTickTimer = null;
+  var toastTimer  = null;
+  var reportRepeatTimer = null;
+
+  var reportFlowStarted  = false;
+  var banCountdownStarted= false;
+
+  var sessionTimers = [];
+  var banTimers     = [];
+
+  var matchStartAt = 0;
+  var selectedType = null;
+  var lastBotIndex = -1;
+
+  /* 开发者模式 */
+  var devClickCount = 0;
+  var devClickTimer = null;
+  var DEV_PASSWORD  = 'gyjjj';
+  var DEV_CLICKS    = 20;
+
+  /* 一次性特殊组合消息标记 */
+  var specialUsed = false;
+
+  /* ============ 封禁状态持久化 ============ */
+  try {
+    if (localStorage.getItem('ban_10y') === '1') {
+      bannedNow = true;
+      showBanModal();
+    }
+  } catch (e) {}
+
+  /* ============ 定时器管理 ============ */
+  function clearSessionTimers() {
+    sessionTimers.forEach(function (t) { clearTimeout(t); clearInterval(t); });
+    sessionTimers = [];
+  }
+
+  function clearBanTimers() {
+    banTimers.forEach(function (t) { clearTimeout(t); clearInterval(t); });
+    banTimers = [];
+  }
+
+  function stopMatchTick() {
+    if (matchTickTimer) {
+      clearInterval(matchTickTimer);
+      matchTickTimer = null;
+    }
+  }
+
+  /* ============ 匹配流程 ============ */
+  matchBtn.addEventListener('click', startMatch);
+
+  function startMatch() {
+    if (bannedNow) return;
+
+    clearSessionTimers();
+    stopMatchTick();
+    resetChatView();
+
+    reportFlowStarted = false;
+    specialUsed = false;   /* 每次重新匹配重置一次性句子 */
+    peerNameEl.textContent = '陌生人';
+
+    chatPage.classList.add('hidden');
+    matchPage.classList.remove('hidden');
+    matchBtn.classList.add('hidden');
+    matching.classList.remove('hidden');
+
+    matchStartAt = Date.now();
+    matchElapsed.textContent = '已等待 0 秒';
+    matchTickTimer = setInterval(updateMatchHint, 400);
+
+    var wait = MATCH_MIN + Math.random() * (MATCH_MAX - MATCH_MIN);
+    sessionTimers.push(setTimeout(function () {
+      stopMatchTick();
+      enterChat();
+    }, wait));
+  }
+
+  function updateMatchHint() {
+    var sec = Math.floor((Date.now() - matchStartAt) / 1000);
+    matchElapsed.textContent = '已等待 ' + sec + ' 秒';
+  }
+
+  function enterChat() {
+    if (bannedNow) return;
+    matchPage.classList.add('hidden');
+    chatPage.classList.remove('hidden');
+    peerNameEl.textContent = '陌生人';
+    startBot();
+  }
+
+  function resetChatView() {
+    msgList.innerHTML = '';
+    lastBotIndex = -1;
+    mutedNow = false;
+    inputBox.disabled = false;
+    sendBtn.disabled = false;
+    inputBox.value = '';
+    inputBox.placeholder = '说点什么…';
+  }
+
+  /* ============ 对方自动发言 ============ */
+  var BOT_LINES = [
+    'sbsbsb',
+    '小学生',
+    'lzlz',
+    '受着',
+    '人机，怎么有一头乐子？',
+    '你死爸妈了',
+    '有本事举报我！',
+    '78787878',
+    '乐乐',
+    '明天不想说话',
+    '滚出去！',
+    'sbjs.cool'
+  ];
+
+  /* 八个书名号连成一条的完整消息，只出现一次 */
+  var SPECIAL_COMBO = '《verity不病娇了》《PC哥爆炸了》《verity不怀孕了》《三天后什么东西都没有》《pc哥给verity配了》《verity给pc哥配了》《pc哥其实是小猫娘》《pc哥的电脑配置是5090》';
+
+  function randomBotLine() {
+    if (!specialUsed && Math.random() < 0.15) {
+      specialUsed = true;
+      return SPECIAL_COMBO;
+    }
+
+    var i;
+    do {
+      i = Math.floor(Math.random() * BOT_LINES.length);
+    } while (i === lastBotIndex && BOT_LINES.length > 1);
+    lastBotIndex = i;
+    return BOT_LINES[i];
+  }
+
+  function startBot() {
+    function loop() {
+      if (bannedNow) return;
+      addPeerMsg(randomBotLine());
+      var next = BOT_MIN + Math.random() * (BOT_MAX - BOT_MIN);
+      sessionTimers.push(setTimeout(loop, next));
+    }
+    sessionTimers.push(setTimeout(loop, 900 + Math.random() * 1100));
+  }
+
+  /* ============ 消息渲染 ============ */
+  function addPeerMsg(text) {
+    var row = document.createElement('div');
+    row.className = 'row peer';
+
+    var bubble = document.createElement('div');
+    bubble.className = 'bubble';
+    bubble.textContent = text;
+
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'report-btn';
+    btn.textContent = '举报';
+    btn.addEventListener('click', openReport);
+
+    row.appendChild(bubble);
+    row.appendChild(btn);
+    msgList.appendChild(row);
+    scrollToBottom();
+  }
+
+  function addMeMsg(text) {
+    var row = document.createElement('div');
+    row.className = 'row me';
+
+    var bubble = document.createElement('div');
+    bubble.className = 'bubble';
+    bubble.textContent = text;
+
+    row.appendChild(bubble);
+    msgList.appendChild(row);
+    scrollToBottom();
+  }
+
+  function scrollToBottom() {
+    msgList.scrollTop = msgList.scrollHeight;
+  }
+
+  /* ============ 发送消息 ============ */
+  function sendMessage() {
+    if (bannedNow || mutedNow || inputBox.disabled) return;
+    var text = inputBox.value.trim();
+    if (!text) return;
+
+    inputBox.value = '';
+    addMeMsg(text);
+    checkUserText(text);
+  }
+
+  sendBtn.addEventListener('click', sendMessage);
+
+  inputBox.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' || e.keyCode === 13) {
+      e.preventDefault();
+      sendMessage();
+    }
+  });
+
+  /* ============ 触发对方举报 → 10秒后封禁 ============ */
+  function checkUserText(text) {
+    if (reportFlowStarted || banCountdownStarted) return;
+
+    var lower = text.toLowerCase();
+    if (lower.indexOf('sb') !== -1 || text.indexOf('举报') !== -1) {
+      reportFlowStarted = true;
+
+      sessionTimers.push(setTimeout(function () {
+        if (bannedNow) return;
+        sendReportMessage();
+      }, 800));
+
+      reportRepeatTimer = setInterval(function () {
+        if (bannedNow) {
+          clearInterval(reportRepeatTimer);
+          return;
+        }
+        sendReportMessage();
+      }, 20000);
+      sessionTimers.push(reportRepeatTimer);
+    }
+  }
+
+  function sendReportMessage() {
+    if (bannedNow) return;
+    addPeerMsg('我要举报你');
+
+    if (!banCountdownStarted) {
+      banCountdownStarted = true;
+      startBanCountdown();
+    }
+  }
+
+  /* ============ 10 秒后直接封禁 ============ */
+  function startBanCountdown() {
+    banTimers.push(setTimeout(function () {
+      if (bannedNow) return;
+      banUser();
+    }, BAN_DELAY));
+  }
+
+  function banUser() {
+    if (bannedNow) return;
+    bannedNow = true;
+    mutedNow = true;
+
+    clearSessionTimers();
+    stopMatchTick();
+
+    inputBox.disabled = true;
+    sendBtn.disabled = true;
+    inputBox.placeholder = '你已被禁言';
+
+    try { localStorage.setItem('ban_10y', '1'); } catch (e) {}
+
+    showBanModal();
+  }
+
+  function showBanModal() {
+    var d = new Date();
+    var pad = function (n) { return n < 10 ? '0' + n : '' + n; };
+    $('banTime').textContent =
+      d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) +
+      ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+
+    banDuration.textContent = '10 年';
+    banModal.classList.remove('hidden');
+    resetDevClick();
+  }
+
+  /* ============ 开发者模式 ============ */
+  function resetDevClick() {
+    devClickCount = 0;
+    clearTimeout(devClickTimer);
+  }
+
+  banTitle.addEventListener('click', function () {
+    devClickCount++;
+
+    clearTimeout(devClickTimer);
+    devClickTimer = setTimeout(function () {
+      devClickCount = 0;
+    }, 3000);
+
+    if (devClickCount >= DEV_CLICKS) {
+      resetDevClick();
+      var pwd = prompt('请输入开发者密码：');
+      if (pwd === DEV_PASSWORD) {
+        unbanByDev();
+      } else if (pwd !== null) {
+        showToast('密码错误');
+      }
+    }
+  });
+
+  function unbanByDev() {
+    try { localStorage.removeItem('ban_10y'); } catch (e) {}
+
+    bannedNow = false;
+    mutedNow = false;
+    banCountdownStarted = false;
+    reportFlowStarted = false;
+
+    clearBanTimers();
+    clearSessionTimers();
+    stopMatchTick();
+
+    banDuration.textContent = '0 秒';
+    banModal.classList.add('hidden');
+
+    chatPage.classList.add('hidden');
+    matchPage.classList.remove('hidden');
+    matchBtn.classList.remove('hidden');
+    matching.classList.add('hidden');
+    matchElapsed.textContent = '已等待 0 秒';
+
+    resetChatView();
+    showToast('已解除封禁');
+  }
+
+  /* ============ 举报面板 ============ */
+  function openReport() {
+    resetReportSheet();
+    reportSheet.classList.remove('hidden');
+  }
+
+  function closeReport() {
+    reportSheet.classList.add('hidden');
+  }
+
+  function resetReportSheet() {
+    selectedType = null;
+
+    var items = reportSheet.querySelectorAll('.sheet-item');
+    Array.prototype.forEach.call(items, function (el) {
+      el.classList.remove('active');
+    });
+
+    otherWrap.classList.add('hidden');
+    otherText.value = '';
+  }
+
+  (function bindReportItems() {
+    var items = reportSheet.querySelectorAll('.sheet-item');
+    Array.prototype.forEach.call(items, function (el) {
+      el.addEventListener('click', function () {
+        Array.prototype.forEach.call(items, function (o) {
+          o.classList.remove('active');
+        });
+        el.classList.add('active');
+        selectedType = el.getAttribute('data-type');
+
+        if (selectedType === '其他') {
+          otherWrap.classList.remove('hidden');
+          setTimeout(function () { otherText.focus(); }, 60);
+        } else {
+          otherWrap.classList.add('hidden');
+        }
+      });
+    });
+  })();
+
+  $('reportSubmit').addEventListener('click', function () {
+    if (!selectedType) {
+      showToast('请选择举报类型');
+      return;
+    }
+    if (selectedType === '其他' && !otherText.value.trim()) {
+      showToast('请填写举报内容');
+      return;
+    }
+
+    closeReport();
+    showToast('已发送成功');
+  });
+
+  $('reportCancel').addEventListener('click', closeReport);
+  reportSheet.querySelector('.sheet-mask').addEventListener('click', closeReport);
+
+  /* ============ Toast ============ */
+  function showToast(msg) {
+    toastEl.textContent = msg;
+    toastEl.classList.remove('hidden');
+
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () {
+      toastEl.classList.add('hidden');
+    }, 1800);
+  }
+
+})();
+</script>
+</body>
+</html>
