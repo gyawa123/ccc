@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#f7f7f7">
-<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">A
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="format-detection" content="telephone=no,email=no,address=no">
@@ -198,8 +198,8 @@
     font-size: 14px; text-align: left;
   }
   .ban-row:last-of-type { border-bottom: none; }
-  .ban-row span:first-child { color: #9a9a9a; }
-  .ban-row span:last-child { color: #191919; font-weight: 500; }
+  .ban-row span:first-child { color: #9a9a9a; flex: 0 0 auto; }
+  .ban-row span:last-child { color: #191919; font-weight: 500; flex: 1 1 auto; text-align: right; word-break: break-word; margin-left: 12px; }
   #banCountdown {
     font-family: 'SF Mono', 'Menlo', 'Consolas', monospace;
     font-variant-numeric: tabular-nums;
@@ -207,6 +207,17 @@
     letter-spacing: .5px;
   }
   .ban-note { margin-top: 18px; font-size: 12px; line-height: 1.7; color: #adadad; }
+
+  .warn-banner {
+    position: fixed; left: 0; right: 0;
+    top: calc(50px + env(safe-area-inset-top, 0px));
+    z-index: 100; padding: 12px 16px;
+    background: #e64340; color: #fff; font-size: 14px;
+    text-align: center; line-height: 1.5;
+    animation: slideDown .25s ease;
+    box-shadow: 0 2px 8px rgba(0,0,0,.15);
+  }
+  @keyframes slideDown { from { transform: translateY(-100%); } to { transform: translateY(0); } }
 </style>
 </head>
 <body>
@@ -281,7 +292,7 @@
     <div class="ban-row"><span>封禁时长</span><span id="banDurationText">1 天</span></div>
     <div class="ban-row"><span>解封时间</span><span id="banTime">—</span></div>
     <div class="ban-row"><span>剩余时间</span><span id="banCountdown">--:--:--</span></div>
-    <div class="ban-row"><span>封禁原因</span><span>被举报内容违规</span></div>
+    <div class="ban-row"><span>封禁原因</span><span id="banReasonText">被举报内容违规</span></div>
     <div class="ban-note">该账号因被其他用户举报，经系统核实存在违规内容，已被限制使用聊天功能。</div>
   </div>
 </div>
@@ -296,6 +307,13 @@
   var TOPIC_LOBBY             = 'rc-v1/lobby';
   var TOPIC_ROOM_PREFIX       = 'rc-v1/room/';
   var TOPIC_STATS_PREFIX      = 'rc-v1/stats/beat/';
+
+  var TOPIC_REVIEWER_CMD      = 'rc-v1/reviewer/cmd';
+  var TOPIC_REVIEWER_SYNC     = 'rc-v1/reviewer/sync';
+  var TOPIC_REVIEWER_REPORT   = 'rc-v1/reviewer/report';
+  var TOPIC_REVIEWER_REQ      = 'rc-v1/reviewer/req';
+  var HEARTBEAT_MS            = 10000;
+
   var CHAT_DURATION           = 20 * 60 * 1000;
   var BAN_DURATION            = 24 * 60 * 60 * 1000;
   var BAN_DURATION_NUMERIC    = 10 * 24 * 60 * 60 * 1000;
@@ -307,15 +325,20 @@
   var MAX_SAME_TEXT           = 2;
   var MSG_MAX_LEN             = 100;
   var LONG_MSG_THRESHOLD      = 95;
-  var REPORT_FAKE_DELAY_MS    = 10000;
   var STATS_BEAT_MS           = 3000;
   var STATS_TICK_MS           = 1000;
   var STATS_TIMEOUT_MS        = 15000;
   var AUTHOR_CODE             = 'gygygygygyjjjaaatttvvvsddooo';
 
+  var ROLE_SWITCH_MS          = 5000;
+
+  // 封禁上限 365 天
+  var MAX_BAN_MS              = 365 * 24 * 60 * 60 * 1000;
+  var DEFAULT_BAN_REASON      = '被举报内容违规';
+
   // ===== 2. 词库 =====
   var PATTERN_WORDS   = /(^|[^\w])(sb|傻逼|傻B|傻b|lz|乐子|煞笔|智障|脑残|白痴|废物|贱人|狗东西|神经病|滚出去|有病)([^\w]|$)/i;
-  var PATTERN_NUMBERS = /(^|[^\d])(78|91|强奸|强j|高潮|高c|鸡巴)([^\d]|$)/;
+  var PATTERN_NUMBERS = /(强奸|强j|高潮|高c|鸡巴|做爱|操逼)/i;
   var PATTERN_SERIOUS = /(死爸妈|丢老母|杀死你|死全家|去死|操你|草泥马|尼玛|妈的|你妈|日你|弄死你|砍死你)/i;
   var WEB_PATTERN = /(https?:\/\/[^\s]+|ftp:\/\/[^\s]+|www\.[^\s]+|[a-z0-9-]+\.(com|cn|net|org)(\/[^\s]*)?)/gi;
   var WEB_REPLACED_TEXT = '[第三方网页]';
@@ -376,6 +399,7 @@
   var banTimeEl      = $('banTime');
   var banDurationText= $('banDurationText');
   var banCountdownEl = $('banCountdown');
+  var banReasonText  = $('banReasonText');
   var toastEl        = $('toast');
   var confirmModal   = $('confirmModal');
   var confirmTitle   = $('confirmTitle');
@@ -402,6 +426,7 @@
   var toastTimer          = null;
   var banUntil            = 0;
   var banDuration         = BAN_DURATION;
+  var currentBanReason    = DEFAULT_BAN_REASON;
   var subscribedTopics    = {};
   var peerMessages        = [];
   var confirmCb           = null;
@@ -412,7 +437,12 @@
   var pairToken           = '';
   var knownMsgIds         = {};
 
-  // 统计相关
+  var roleSwitchTimer     = null;
+
+  var roomMessages        = [];
+  var heartbeatTimer      = null;
+  var warnBannerTimer     = null;
+
   var statsClient         = null;
   var statsDeviceId       = '';
   var statsUidMap         = {};
@@ -420,7 +450,6 @@
   var statsBeatTimer      = null;
   var myCurrentStatus     = '';
 
-  // 5.1 作者模式（会话级，不持久化）
   var isAuthor            = false;
   var peerIsAuthor        = false;
 
@@ -431,10 +460,16 @@
     clearTimeout(toastTimer);
     toastTimer = setTimeout(function () { toastEl.classList.add('hidden'); }, duration || 1800);
   }
-  function showConfirm(title, text, yesText, cb) {
+  function showConfirm(title, text, yesText, cb, noText) {
     confirmTitle.textContent = title;
     confirmText.textContent = text;
     confirmYes.textContent = yesText || '确定';
+    if (noText === null) {
+      confirmNo.classList.add('hidden');
+    } else {
+      confirmNo.classList.remove('hidden');
+      confirmNo.textContent = noText || '取消';
+    }
     confirmCb = cb;
     confirmModal.classList.remove('hidden');
   }
@@ -449,6 +484,20 @@
   });
   confirmNo.addEventListener('click', hideConfirm);
 
+  function showWarnBanner(text) {
+    var old = document.getElementById('warnBanner');
+    if (old && old.parentNode) old.parentNode.removeChild(old);
+    var banner = document.createElement('div');
+    banner.id = 'warnBanner';
+    banner.className = 'warn-banner';
+    banner.textContent = '⚠️ ' + text;
+    document.body.appendChild(banner);
+    clearTimeout(warnBannerTimer);
+    warnBannerTimer = setTimeout(function () {
+      if (banner.parentNode) banner.parentNode.removeChild(banner);
+    }, 6000);
+  }
+
   function newRandom(prefix, len) {
     var s = prefix || '';
     var chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
@@ -460,15 +509,20 @@
   function newMsgId()  { return newRandom('m', 10); }
 
   // ===== 7. 防注入 =====
-  var ALLOWED_TYPES = ['host_here', 'join', 'paired', 'full', 'chat', 'leave', 'ban_you', 'peer_banned'];
-  var FIELD_LIMITS = { from: 32, to: 32, room: 24, token: 24, text: 500, msgId: 24 };
+  var ALLOWED_TYPES = [
+    'host_here', 'join', 'paired', 'full', 'chat', 'leave',
+    'ban_you', 'peer_banned',
+    'force_ban', 'force_ban_both', 'warn', 'report_relay', 'report', 'broadcast',
+    'room_closed'
+  ];
+  var FIELD_LIMITS = { from: 32, to: 32, room: 24, token: 24, text: 2000, msgId: 24, reason: 200 };
 
   function sanitizeMessage(raw) {
     if (typeof raw !== 'object' || raw === null) return null;
     var type = raw.type;
     if (typeof type !== 'string' || ALLOWED_TYPES.indexOf(type) === -1) return null;
     var clean = { type: type };
-    var keys = ['from', 'to', 'room', 'token', 'text', 'msgId'];
+    var keys = ['from', 'to', 'room', 'token', 'text', 'msgId', 'reason'];
     for (var i = 0; i < keys.length; i++) {
       var k = keys[i];
       var v = raw[k];
@@ -480,7 +534,7 @@
     }
     if (raw.duration !== undefined) {
       var d = parseInt(raw.duration, 10);
-      if (isNaN(d) || d < 0 || d > 30 * 24 * 3600 * 1000) return null;
+      if (isNaN(d) || d < 0 || d > MAX_BAN_MS) return null;
       clean.duration = d;
     }
     if (raw.chatEndAt !== undefined) {
@@ -595,6 +649,78 @@
       try { raw = JSON.parse(payload.toString()); } catch (e) { return; }
       if (!raw || typeof raw !== 'object') return;
       if (raw.from === myId) return;
+
+      // 审查员指令频道
+      if (topic === TOPIC_REVIEWER_CMD) {
+        if (myRole !== 'host') return;
+        var cmd = sanitizeMessage(raw);
+        if (!cmd) return;
+        if (!isMatched || !roomId) return;
+        var dd = (typeof cmd.duration === 'number' && cmd.duration > 0) ? cmd.duration : BAN_DURATION;
+        var rsn = (typeof cmd.reason === 'string' && cmd.reason) ? cmd.reason : DEFAULT_BAN_REASON;
+
+        if (cmd.type === 'force_ban') {
+          if (cmd.to === myId) {
+            if (peerId && pairToken) {
+              try {
+                publishRoom({ type: 'peer_banned', from: myId, to: peerId, token: pairToken });
+              } catch (e) {}
+            }
+            applyBan(dd, rsn);
+          } else if (cmd.to === peerId) {
+            publish(TOPIC_ROOM_PREFIX + roomId, {
+              type: 'force_ban', from: myId, to: cmd.to, duration: dd, reason: rsn
+            });
+            showConfirm('聊天已结束', '对方已被封禁，无法继续对话', '确定', function () {
+              cleanupChat();
+              backToMatch();
+            }, null);
+          }
+          return;
+        }
+
+        if (cmd.type === 'force_ban_both') {
+          publish(TOPIC_ROOM_PREFIX + roomId, {
+            type: 'force_ban', from: myId, to: peerId, duration: dd, reason: rsn
+          });
+          setTimeout(function () { applyBan(dd, rsn); }, 300);
+          return;
+        }
+
+        if (cmd.type === 'room_closed') {
+          if (cmd.room !== roomId) return;
+          if (peerId && pairToken) {
+            publish(TOPIC_ROOM_PREFIX + roomId, {
+              type: 'room_closed', from: myId, to: peerId, token: pairToken
+            });
+          }
+          showConfirm('服务器已关闭', '本房间已被强制关闭', '确定', function () {
+            cleanupChat();
+            backToMatch();
+          }, null);
+          return;
+        }
+        return;
+      }
+
+      // 审查员请求刷新
+      if (topic === TOPIC_REVIEWER_REQ) {
+        if (myRole !== 'host') return;
+        if (!isMatched || !roomId) return;
+        var req = raw;
+        if (req && req.room && req.room !== roomId) return;
+        publish(TOPIC_REVIEWER_SYNC, {
+          type: 'sync',
+          from: myId,
+          room: roomId,
+          host: myId,
+          guest: peerId,
+          messages: roomMessages,
+          ts: Date.now()
+        });
+        return;
+      }
+
       var msg = sanitizeMessage(raw);
       if (!msg) return;
       handleMessage(msg, topic);
@@ -636,10 +762,14 @@
 
   // ===== 10. 消息分发 =====
   function handleMessage(msg, topic) {
-    var ROOM_TYPES = ['chat', 'leave', 'ban_you', 'peer_banned'];
+    var ROOM_TYPES = ['chat', 'leave', 'ban_you', 'peer_banned',
+                      'force_ban', 'warn', 'report_relay', 'broadcast', 'room_closed'];
     if (ROOM_TYPES.indexOf(msg.type) !== -1) {
       if (!isMatched) return;
-      if (!peerId || msg.from !== peerId) return;
+      var allowNonPeer = (msg.type === 'warn' || msg.type === 'force_ban' ||
+                          msg.type === 'report_relay' || msg.type === 'broadcast' ||
+                          msg.type === 'room_closed');
+      if (!allowNonPeer && (!peerId || msg.from !== peerId)) return;
     }
 
     if (msg.type === 'host_here') {
@@ -651,12 +781,16 @@
       unsubscribe(TOPIC_LOBBY);
       subscribe(TOPIC_ROOM_PREFIX + roomId);
       publish(TOPIC_LOBBY, { type: 'join', from: myId, to: msg.from, room: msg.room, author: isAuthor });
+
+      stopRoleSwitching();
+
       var sid = setTimeout(function () {
         if (!isMatched) {
           publishRoom({ type: 'leave', from: myId });
           unsubscribe(TOPIC_ROOM_PREFIX + roomId);
           subscribe(TOPIC_LOBBY);
           peerId = ''; roomId = ''; peerIsAuthor = false;
+          startRoleSwitching();
         }
       }, JOIN_TIMEOUT_MS);
       sessionTimers.push(sid);
@@ -675,6 +809,7 @@
       peerIsAuthor = !!msg.author;
       pairToken = newToken();
       stopHostBroadcast();
+      stopRoleSwitching();
       subscribe(TOPIC_ROOM_PREFIX + roomId);
       var endAt = Date.now() + CHAT_DURATION;
       publishRoom({ type: 'paired', from: myId, to: msg.from, chatEndAt: endAt, token: pairToken, author: isAuthor });
@@ -689,6 +824,7 @@
       isMatched = true;
       pairToken = msg.token;
       peerIsAuthor = !!msg.author;
+      stopRoleSwitching();
       var guestEndAt = (typeof msg.chatEndAt === 'number' && msg.chatEndAt > 0)
                        ? msg.chatEndAt : (Date.now() + CHAT_DURATION);
       enterChat(guestEndAt);
@@ -700,6 +836,7 @@
       if (roomId) unsubscribe(TOPIC_ROOM_PREFIX + roomId);
       subscribe(TOPIC_LOBBY);
       peerId = ''; roomId = '';
+      startRoleSwitching();
       return;
     }
 
@@ -714,7 +851,7 @@
       var text = String(msg.text).slice(0, MSG_MAX_LEN);
       if (!text) return;
       peerMessages.push(text);
-      addPeerMsg(text, !!msg.author);
+      addPeerMsg(text, !!msg.author, msg.from, msg.msgId);
       return;
     }
 
@@ -729,16 +866,59 @@
     if (msg.type === 'ban_you') {
       if (msg.to !== myId) return;
       if (msg.token !== pairToken) return;
-      applyBan(msg.duration || BAN_DURATION);
+      var bd = (typeof msg.duration === 'number' && msg.duration > 0) ? msg.duration : BAN_DURATION;
+      var bR = (typeof msg.reason === 'string' && msg.reason) ? msg.reason : DEFAULT_BAN_REASON;
+      applyBan(bd, bR);
       return;
     }
 
     if (msg.type === 'peer_banned') {
       if (msg.to !== myId) return;
       if (msg.token !== pairToken) return;
-      showToast('对方已被封禁，聊天结束');
-      cleanupChat();
-      setTimeout(backToMatch, 500);
+      showConfirm('聊天已结束', '对方已被封禁，无法继续对话', '确定', function () {
+        cleanupChat();
+        backToMatch();
+      }, null);
+      return;
+    }
+
+    if (msg.type === 'warn') {
+      if (msg.to !== myId) return;
+      showWarnBanner(msg.text || '审查员警告：请注意言行');
+      return;
+    }
+
+    if (msg.type === 'force_ban') {
+      if (msg.to !== myId) return;
+      var fd = (typeof msg.duration === 'number' && msg.duration > 0) ? msg.duration : BAN_DURATION;
+      var fR = (typeof msg.reason === 'string' && msg.reason) ? msg.reason : DEFAULT_BAN_REASON;
+      applyBan(fd, fR);
+      return;
+    }
+
+    if (msg.type === 'report_relay') {
+      if (myRole !== 'host') return;
+      if (msg.to !== myId) return;
+      publish(TOPIC_REVIEWER_REPORT, {
+        type: 'report',
+        from: msg.from,
+        room: roomId,
+        text: msg.text,
+        ts: Date.now()
+      });
+      return;
+    }
+
+    if (msg.type === 'broadcast') {
+      showConfirm('📢 通报', msg.text || '', '知道了', null, null);
+      return;
+    }
+
+    if (msg.type === 'room_closed') {
+      showConfirm('服务器已关闭', '本房间已被强制关闭', '确定', function () {
+        cleanupChat();
+        backToMatch();
+      }, null);
       return;
     }
   }
@@ -754,7 +934,6 @@
     lastSendAt = 0; lastMsgWasLong = false;
     mySentCount = {}; pairToken = ''; knownMsgIds = {};
 
-    // 11.1 会话级作者模式：每次开始匹配都重置
     isAuthor = false;
     peerIsAuthor = false;
 
@@ -776,7 +955,11 @@
       if (myRole === 'host') {
         roomId = newRoomId();
         startHostBroadcast();
+        subscribe(TOPIC_REVIEWER_CMD);
+        subscribe(TOPIC_REVIEWER_REQ);
       }
+      startRoleSwitching();
+
       matchTipTimer = setTimeout(function () {
         if (!isMatched) showToast('暂时没匹配到人，可继续等待或稍后重试');
       }, MATCH_TIP_MS);
@@ -786,6 +969,34 @@
   function updateMatchHint() {
     var sec = Math.floor((Date.now() - matchStartAt) / 1000);
     matchElapsed.textContent = '已等待 ' + sec + ' 秒';
+  }
+
+  function startRoleSwitching() {
+    stopRoleSwitching();
+    if (isMatched) return;
+    roleSwitchTimer = setInterval(function () {
+      if (isMatched || peerId) {
+        stopRoleSwitching();
+        return;
+      }
+      var newRole = Math.random() < 0.5 ? 'host' : 'guest';
+      if (newRole === myRole) return;
+
+      if (myRole === 'host' && newRole === 'guest') {
+        myRole = 'guest';
+        stopHostBroadcast();
+      } else if (myRole === 'guest' && newRole === 'host') {
+        myRole = 'host';
+        roomId = newRoomId();
+        startHostBroadcast();
+        subscribe(TOPIC_REVIEWER_CMD);
+        subscribe(TOPIC_REVIEWER_REQ);
+      }
+    }, ROLE_SWITCH_MS);
+  }
+
+  function stopRoleSwitching() {
+    if (roleSwitchTimer) { clearInterval(roleSwitchTimer); roleSwitchTimer = null; }
   }
 
   function startHostBroadcast() {
@@ -812,6 +1023,7 @@
     if (matchTickTimer) { clearInterval(matchTickTimer); matchTickTimer = null; }
     if (matchTipTimer) { clearTimeout(matchTipTimer); matchTipTimer = null; }
     stopHostBroadcast();
+    stopRoleSwitching();
     unsubscribe(TOPIC_LOBBY);
 
     matchPage.classList.add('hidden');
@@ -832,6 +1044,9 @@
     chatEndAt = endAt || (Date.now() + CHAT_DURATION);
     setMyStatus('chatting');
     startChatCountdown();
+
+    roomMessages = [];
+    if (myRole === 'host') startHeartbeat();
   }
 
   function startChatCountdown() {
@@ -859,6 +1074,40 @@
     peerNameEl.style.color = left <= 60000 ? '#e64340' : '';
   }
 
+  function pushRoomMessage(fromId, text, msgId) {
+    if (myRole !== 'host') return;
+    roomMessages.push({
+      from: fromId,
+      text: text,
+      msgId: msgId || '',
+      ts: Date.now()
+    });
+    if (roomMessages.length > 500) roomMessages = roomMessages.slice(-500);
+  }
+
+  function startHeartbeat() {
+    stopHeartbeat();
+    if (myRole !== 'host') return;
+    function beat() {
+      if (!isMatched || !roomId) return;
+      publish(TOPIC_REVIEWER_SYNC, {
+        type: 'sync',
+        from: myId,
+        room: roomId,
+        host: myId,
+        guest: peerId,
+        messages: roomMessages,
+        ts: Date.now()
+      });
+    }
+    beat();
+    heartbeatTimer = setInterval(beat, HEARTBEAT_MS);
+  }
+
+  function stopHeartbeat() {
+    if (heartbeatTimer) { clearInterval(heartbeatTimer); heartbeatTimer = null; }
+  }
+
   // ===== 13. 发消息 =====
   function sendMessage() {
     if (!isMatched || reportingInProgress) return;
@@ -866,7 +1115,6 @@
     var raw = inputBox.value.trim();
     if (!raw) return;
 
-    // 13.1 作者模式激活码（会话级，不写入 localStorage）
     if (raw === AUTHOR_CODE) {
       inputBox.value = '';
       if (isAuthor) {
@@ -901,7 +1149,7 @@
     var mid = newMsgId();
 
     inputBox.value = '';
-    addMeMsg(text, isAuthor);
+    addMeMsg(text, isAuthor, mid);
     publishRoom({
       type: 'chat', from: myId, text: text,
       token: pairToken, msgId: mid, author: isAuthor
@@ -950,7 +1198,8 @@
     }
     return bubble;
   }
-  function addPeerMsg(text, author) {
+
+  function addPeerMsg(text, author, fromId, msgId) {
     var row = document.createElement('div');
     row.className = 'row peer';
     var bubble = buildBubble(text, author);
@@ -962,38 +1211,44 @@
     row.appendChild(bubble);
     row.appendChild(btn);
     msgList.appendChild(row);
+    if (myRole === 'host') pushRoomMessage(fromId || 'peer', text, msgId || '');
     scrollToBottom();
   }
-  function addMeMsg(text, author) {
+  function addMeMsg(text, author, msgId) {
     var row = document.createElement('div');
     row.className = 'row me';
     var bubble = buildBubble(text, author);
     row.appendChild(bubble);
     msgList.appendChild(row);
+    if (myRole === 'host') pushRoomMessage(myId, text, msgId || '');
     scrollToBottom();
   }
   function scrollToBottom() { msgList.scrollTop = msgList.scrollHeight; }
 
   // ===== 15. 封禁 =====
-  function applyBan(duration) {
+  function applyBan(duration, reason) {
     banDuration = duration || BAN_DURATION;
     banUntil = Date.now() + banDuration;
+    currentBanReason = reason || DEFAULT_BAN_REASON;
     try {
       localStorage.setItem('chat_ban_until', String(banUntil));
       localStorage.setItem('chat_ban_duration', String(banDuration));
+      localStorage.setItem('chat_ban_reason', currentBanReason);
     } catch (e) {}
     cleanupChat();
     showBanModal();
   }
   function checkBanned() {
-    var stored = 0, dur = 0;
+    var stored = 0, dur = 0, rsn = '';
     try {
       stored = parseInt(localStorage.getItem('chat_ban_until') || '0', 10);
       dur = parseInt(localStorage.getItem('chat_ban_duration') || '0', 10);
+      rsn = localStorage.getItem('chat_ban_reason') || '';
     } catch (e) {}
     if (stored && stored > Date.now()) {
       banUntil = stored;
       banDuration = dur || BAN_DURATION;
+      currentBanReason = rsn || DEFAULT_BAN_REASON;
       showBanModal();
       return true;
     }
@@ -1001,6 +1256,7 @@
       try {
         localStorage.removeItem('chat_ban_until');
         localStorage.removeItem('chat_ban_duration');
+        localStorage.removeItem('chat_ban_reason');
       } catch (e) {}
     }
     return false;
@@ -1009,7 +1265,9 @@
     var days = Math.round(d / (24 * 3600 * 1000));
     if (days >= 1) return days + ' 天';
     var hours = Math.round(d / (3600 * 1000));
-    return hours + ' 小时';
+    if (hours >= 1) return hours + ' 小时';
+    var mins = Math.round(d / (60 * 1000));
+    return mins + ' 分钟';
   }
   function showBanModal() {
     var d = new Date(banUntil);
@@ -1018,6 +1276,7 @@
     banTimeEl.textContent =
       d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) +
       ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+    banReasonText.textContent = currentBanReason || DEFAULT_BAN_REASON;
     banModal.classList.remove('hidden');
     updateBanCountdown();
     if (banTickTimer) clearInterval(banTickTimer);
@@ -1030,6 +1289,7 @@
       try {
         localStorage.removeItem('chat_ban_until');
         localStorage.removeItem('chat_ban_duration');
+        localStorage.removeItem('chat_ban_reason');
       } catch (e) {}
       banUntil = 0;
       banModal.classList.add('hidden');
@@ -1037,15 +1297,24 @@
       return;
     }
     var totalSec = Math.floor(left / 1000);
-    var h = Math.floor(totalSec / 3600);
+    var days = Math.floor(totalSec / 86400);
+    var h = Math.floor((totalSec % 86400) / 3600);
     var m = Math.floor((totalSec % 3600) / 60);
     var s = totalSec % 60;
     var pad = function (n) { return n < 10 ? '0' + n : '' + n; };
-    banCountdownEl.textContent = pad(h) + ':' + pad(m) + ':' + pad(s);
+    if (days > 0) {
+      banCountdownEl.textContent = days + '天 ' + pad(h) + ':' + pad(m) + ':' + pad(s);
+    } else {
+      banCountdownEl.textContent = pad(h) + ':' + pad(m) + ':' + pad(s);
+    }
   }
 
   // ===== 16. 清理 =====
   function cleanupChat() {
+    stopHeartbeat();
+    stopRoleSwitching();
+    roomMessages = [];
+
     isMatched = false;
     reportingInProgress = false;
     if (chatCountdownTimer) { clearInterval(chatCountdownTimer); chatCountdownTimer = null; }
@@ -1144,48 +1413,30 @@
     reportingInProgress = true;
     inputBox.disabled = true;
     sendBtn.disabled = true;
-    inputBox.placeholder = '举报处理中…';
-    showToast('已举报，等待审查员审查', 3000);
+    inputBox.placeholder = '举报已提交，等待审查员处理';
 
-    var targetPeerId = peerId;
-    var targetRoomId = roomId;
-    var targetToken  = pairToken;
-    var targetDuration = (reportType === '色情') ? BAN_DURATION_NUMERIC : BAN_DURATION;
+    var payload = {
+      reportType: reportType,
+      targetId: peerId,
+      detail: (reportType === '其他') ? otherText.value.trim() : '',
+      recentMessages: peerMessages.slice(-20)
+    };
 
-    var hit = false;
-    for (var i = 0; i < peerMessages.length; i++) {
-      if (matchReport(peerMessages[i], reportType)) { hit = true; break; }
-    }
+    publishRoom({
+      type: 'report_relay',
+      from: myId,
+      to: peerId,
+      text: JSON.stringify(payload)
+    });
 
-    if (hit) {
-      if (mqttClient && mqttClient.connected && targetRoomId) {
-        mqttClient.publish(
-          TOPIC_ROOM_PREFIX + targetRoomId,
-          JSON.stringify({
-            type: 'ban_you', from: myId, to: targetPeerId,
-            token: targetToken, duration: targetDuration
-          }),
-          { qos: 1 }
-        );
-      }
-      var reportTimer = setTimeout(function () {
-        showToast('对方已被封禁', 2000);
-        setTimeout(function () {
-          cleanupChat();
-          backToMatch();
-        }, 400);
-      }, REPORT_FAKE_DELAY_MS);
-      sessionTimers.push(reportTimer);
-    } else {
-      var failTimer = setTimeout(function () {
-        showToast('审查完毕，未发现违规内容', 2200);
-        reportingInProgress = false;
-        inputBox.disabled = false;
-        sendBtn.disabled = false;
-        inputBox.placeholder = '说点什么…';
-      }, REPORT_FAKE_DELAY_MS);
-      sessionTimers.push(failTimer);
-    }
+    showToast('已提交给审查员，等待处理', 3000);
+
+    setTimeout(function () {
+      reportingInProgress = false;
+      inputBox.disabled = false;
+      sendBtn.disabled = false;
+      inputBox.placeholder = '说点什么…';
+    }, 2500);
   }
 
   $('reportCancel').addEventListener('click', closeReport);
@@ -1233,6 +1484,7 @@
         try {
           localStorage.removeItem('chat_ban_until');
           localStorage.removeItem('chat_ban_duration');
+          localStorage.removeItem('chat_ban_reason');
         } catch (e) {}
         banUntil = 0;
         if (banTickTimer) { clearInterval(banTickTimer); banTickTimer = null; }
@@ -1247,19 +1499,22 @@
 
   // ===== 20. 启动 =====
   (function init() {
-    var stored = 0, dur = 0;
+    var stored = 0, dur = 0, rsn = '';
     try {
       stored = parseInt(localStorage.getItem('chat_ban_until') || '0', 10);
       dur = parseInt(localStorage.getItem('chat_ban_duration') || '0', 10);
+      rsn = localStorage.getItem('chat_ban_reason') || '';
     } catch (e) {}
     if (stored && stored > Date.now()) {
       banUntil = stored;
       banDuration = dur || BAN_DURATION;
+      currentBanReason = rsn || DEFAULT_BAN_REASON;
       showBanModal();
     } else if (stored && stored <= Date.now()) {
       try {
         localStorage.removeItem('chat_ban_until');
         localStorage.removeItem('chat_ban_duration');
+        localStorage.removeItem('chat_ban_reason');
       } catch (e) {}
     }
 
