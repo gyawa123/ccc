@@ -302,7 +302,6 @@
 (function () {
   'use strict';
 
-  // ===== 1. 常量 =====
   var MQTT_BROKER             = 'wss://broker.emqx.io:8084/mqtt';
   var TOPIC_LOBBY             = 'rc-v1/lobby';
   var TOPIC_ROOM_PREFIX       = 'rc-v1/room/';
@@ -332,11 +331,9 @@
 
   var ROLE_SWITCH_MS          = 5000;
 
-  // 封禁上限 365 天
   var MAX_BAN_MS              = 365 * 24 * 60 * 60 * 1000;
   var DEFAULT_BAN_REASON      = '被举报内容违规';
 
-  // ===== 2. 词库 =====
   var PATTERN_WORDS   = /(^|[^\w])(sb|傻逼|傻B|傻b|lz|乐子|煞笔|智障|脑残|白痴|废物|贱人|狗东西|神经病|滚出去|有病)([^\w]|$)/i;
   var PATTERN_NUMBERS = /(强奸|强j|高潮|高c|鸡巴|做爱|操逼)/i;
   var PATTERN_SERIOUS = /(死爸妈|丢老母|杀死你|死全家|去死|操你|草泥马|尼玛|妈的|你妈|日你|弄死你|砍死你)/i;
@@ -357,7 +354,6 @@
 
   var _p = ['g', 'y', 'j', 'j', 'j'].join('');
 
-  // ===== 3. 全屏高度 =====
   var app = document.getElementById('app');
   function setFullHeight() {
     var h = window.innerHeight;
@@ -380,7 +376,6 @@
   setTimeout(setFullHeight, 60);
   setTimeout(setFullHeight, 300);
 
-  // ===== 4. DOM =====
   var $ = function (id) { return document.getElementById(id); };
   var matchPage      = $('matchPage');
   var chatPage       = $('chatPage');
@@ -408,7 +403,6 @@
   var confirmNo      = $('confirmNo');
   var statsLineEl    = $('statsLine');
 
-  // ===== 5. 状态 =====
   var mqttClient          = null;
   var myId                = '';
   var myRole              = null;
@@ -453,7 +447,6 @@
   var isAuthor            = false;
   var peerIsAuthor        = false;
 
-  // ===== 6. 工具 =====
   function showToast(msg, duration) {
     toastEl.textContent = msg;
     toastEl.classList.remove('hidden');
@@ -508,7 +501,6 @@
   function newToken()  { return newRandom('', 12); }
   function newMsgId()  { return newRandom('m', 10); }
 
-  // ===== 7. 防注入 =====
   var ALLOWED_TYPES = [
     'host_here', 'join', 'paired', 'full', 'chat', 'leave',
     'ban_you', 'peer_banned',
@@ -546,7 +538,6 @@
     return clean;
   }
 
-  // ===== 8. 统计连接 =====
   function initStatsClient() {
     try { statsDeviceId = localStorage.getItem('rc_device_id') || ''; } catch (e) {}
     if (!statsDeviceId) {
@@ -631,7 +622,6 @@
     try { statsClient.publish(beatTopic, '', { qos: 0, retain: true }); } catch (e) {}
   }
 
-  // ===== 9. 聊天连接 =====
   function initMqtt() {
     if (mqttClient) { try { mqttClient.end(true); } catch (e) {} mqttClient = null; }
     myId = newRandom('u_', 9);
@@ -650,7 +640,6 @@
       if (!raw || typeof raw !== 'object') return;
       if (raw.from === myId) return;
 
-      // 审查员指令频道
       if (topic === TOPIC_REVIEWER_CMD) {
         if (myRole !== 'host') return;
         var cmd = sanitizeMessage(raw);
@@ -703,7 +692,6 @@
         return;
       }
 
-      // 审查员请求刷新
       if (topic === TOPIC_REVIEWER_REQ) {
         if (myRole !== 'host') return;
         if (!isMatched || !roomId) return;
@@ -760,7 +748,6 @@
     sessionTimers.push(t);
   }
 
-  // ===== 10. 消息分发 =====
   function handleMessage(msg, topic) {
     var ROOM_TYPES = ['chat', 'leave', 'ban_you', 'peer_banned',
                       'force_ban', 'warn', 'report_relay', 'broadcast', 'room_closed'];
@@ -923,7 +910,6 @@
     }
   }
 
-  // ===== 11. 匹配 =====
   matchBtn.addEventListener('click', startMatch);
 
   function startMatch() {
@@ -1018,7 +1004,6 @@
     backToMatch();
   });
 
-  // ===== 12. 进入聊天 =====
   function enterChat(endAt) {
     if (matchTickTimer) { clearInterval(matchTickTimer); matchTickTimer = null; }
     if (matchTipTimer) { clearTimeout(matchTipTimer); matchTipTimer = null; }
@@ -1108,7 +1093,6 @@
     if (heartbeatTimer) { clearInterval(heartbeatTimer); heartbeatTimer = null; }
   }
 
-  // ===== 13. 发消息 =====
   function sendMessage() {
     if (!isMatched || reportingInProgress) return;
 
@@ -1166,7 +1150,6 @@
     }
   });
 
-  // ===== 14. 消息渲染 =====
   var AUTHOR_COLORS = ['#e64340','#f0a020','#07c160','#2196f3','#9c27b0','#ff5722','#00bcd4','#795548','#3f51b5','#e91e63'];
 
   function colorizeInto(el, text) {
@@ -1225,7 +1208,6 @@
   }
   function scrollToBottom() { msgList.scrollTop = msgList.scrollHeight; }
 
-  // ===== 15. 封禁 =====
   function applyBan(duration, reason) {
     banDuration = duration || BAN_DURATION;
     banUntil = Date.now() + banDuration;
@@ -1309,7 +1291,6 @@
     }
   }
 
-  // ===== 16. 清理 =====
   function cleanupChat() {
     stopHeartbeat();
     stopRoleSwitching();
@@ -1368,7 +1349,6 @@
     clearMyStats();
   });
 
-  // ===== 17. 举报面板 =====
   var selectedType = null;
   function openReport() {
     if (!isMatched || !peerId || reportingInProgress) { showToast('当前无法举报'); return; }
@@ -1442,7 +1422,6 @@
   $('reportCancel').addEventListener('click', closeReport);
   reportSheet.querySelector('.sheet-mask').addEventListener('click', closeReport);
 
-  // ===== 18. 后门 1：主页面标题连点 20 下 → 全屏 =====
   var mainTitleClickCount = 0;
   var mainTitleClickTimer = null;
   $('mainTitle').addEventListener('click', function () {
@@ -1470,7 +1449,6 @@
     } catch (e) {}
   }
 
-  // ===== 19. 后门 2：封禁标题连点 20 下 → 输密码解封 =====
   var banTitleClickCount = 0;
   var banTitleClickTimer = null;
   $('banTitle').addEventListener('click', function () {
@@ -1497,7 +1475,6 @@
     }
   });
 
-  // ===== 20. 启动 =====
   (function init() {
     var stored = 0, dur = 0, rsn = '';
     try {
